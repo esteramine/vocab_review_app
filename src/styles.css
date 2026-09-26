@@ -19,7 +19,15 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-html, body, #root { height: 100%; margin: 0; }
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  /* iOS Safari/standalone: 100% is shorter than the screen, pinning content
+     to the top with a gap below. Dynamic viewport height fills the real
+     visible area. -webkit-fill-available is the fallback for older iOS. */
+  height: -webkit-fill-available;
+  height: 100dvh;
+}
 
 body {
   background: linear-gradient(160deg, #fff7ef 0%, #ffeede 100%);
@@ -32,7 +40,13 @@ body {
 /* Japanese vocab content uses the JP face */
 .jp, .furigana, [lang='ja'] { font-family: var(--jp); }
 
-.app { max-width: 520px; margin: 0 auto; height: 100%; }
+.app {
+  max-width: 520px;
+  margin: 0 auto;
+  height: 100%;
+  height: -webkit-fill-available;
+  height: 100dvh;
+}
 
 .screen {
   padding: 20px 18px calc(24px + env(safe-area-inset-bottom));
