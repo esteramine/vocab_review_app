@@ -136,28 +136,42 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
             )}
           </div>
         ) : (
-          /* CLOZE card — unchanged. */
-          <>
-            {!revealed && (
-              <div className="prompt">
-                <p className="cue jp">{ex ? clozeSentence(ex.jp, ex.blankStart, ex.blankEnd) : ''}</p>
+          /* CLOZE — keep the sentence in place; fill the blank on reveal. */
+          <div className="answer cloze">
+            {/* The sentence stays put across reveal. Before: gap. After: the
+                word (as furigana) drops into the same slot — minimal jump. */}
+            {ex && ex.blankStart >= 0 && ex.blankEnd > ex.blankStart ? (
+              <p className="cue jp cloze-line">
+                <span>{ex.jp.slice(0, ex.blankStart)}</span>
+                {revealed ? (
+                  <span className="cloze-fill">
+                    <Furigana segments={item.word.segments} size={26} />
+                  </span>
+                ) : (
+                  <span className="cloze-gap" aria-label="填空" />
+                )}
+                <span>{ex.jp.slice(ex.blankEnd)}</span>
+              </p>
+            ) : (
+              // No locatable blank: just show the sentence (and the word on reveal).
+              <>
+                <p className="cue jp cloze-line">{ex ? ex.jp : ''}</p>
+                {revealed && <Furigana segments={item.word.segments} size={30} />}
+              </>
+            )}
+
+            {!revealed ? (
+              <>
                 <p className="hint muted">提示：{item.word.meaning}</p>
                 <button className="primary wide" onClick={() => setRevealed(true)}>
                   顯示答案
                 </button>
-              </div>
-            )}
-            {revealed && (
-              <div className="answer">
-                <Furigana segments={item.word.segments} size={40} />
+              </>
+            ) : (
+              <>
                 <p className="reading muted jp">{item.word.reading}</p>
                 <p className="meaning">{item.word.meaning}</p>
-                {ex && (
-                  <div className="example">
-                    <p className="jp">{ex.jp}</p>
-                    {ex.translation && <p className="muted">{ex.translation}</p>}
-                  </div>
-                )}
+                {ex?.translation && <p className="muted cloze-tl">{ex.translation}</p>}
                 <div className="grades">
                   <button className="g-again" onClick={() => grade(Rating.Again as Grade)}>
                     再一次<small>{intervals?.[Rating.Again]}</small>
@@ -172,9 +186,9 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
                     簡單<small>{intervals?.[Rating.Easy]}</small>
                   </button>
                 </div>
-              </div>
+              </>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

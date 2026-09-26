@@ -198,6 +198,34 @@ button.link { background: none; padding: 6px; color: var(--muted); font-size: 15
 .example .jp { font-size: 17px; margin: 0 0 4px; line-height: 1.7; }
 .example .muted { font-size: 14px; margin: 0; }
 
+/* Cloze: keep the sentence anchored; the blank fills in place on reveal. */
+.answer.cloze { justify-content: flex-start; }
+.cloze-line {
+  font-size: 22px;
+  line-height: 2;
+  margin: 8px 0;
+  display: inline;
+}
+.cloze-gap {
+  display: inline-block;
+  width: 3.5em;
+  border-bottom: 3px solid var(--accent);
+  vertical-align: baseline;
+  margin: 0 2px;
+}
+/* zero-width invisible glyph gives the empty span the line's baseline, so the
+   underline sits at the bottom of the text instead of floating near the top */
+.cloze-gap::before { content: '\200b'; }
+.cloze-fill { display: inline-flex; align-items: baseline; }
+.cloze-fill .furigana {
+  color: var(--accent-2);
+  font-weight: 700;
+  background: rgba(34, 193, 164, 0.12);
+  border-radius: 6px;
+  padding: 0 4px;
+}
+.cloze-tl { font-size: 14px; margin: 0; }
+
 /* Draw pad */
 .drawpad { width: 100%; }
 .drawpad canvas {
