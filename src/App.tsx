@@ -24,6 +24,7 @@ export default function App() {
   if (reviewing) {
     return (
       <div className="app">
+        <div className="statusbar-fill" aria-hidden="true" />
         <ReviewScreen
           onDone={() => {
             setReviewing(false)
@@ -36,6 +37,7 @@ export default function App() {
 
   return (
     <div className="app with-tabs">
+      <div className="statusbar-fill" aria-hidden="true" />
       <main className="tab-body">
         {tab === 'home' && (
           <HomeScreen key={nonce} onReview={() => setReviewing(true)} onAdd={() => go('add')} />

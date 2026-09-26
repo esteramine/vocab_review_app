@@ -41,3 +41,41 @@ export async function queueCounts(now = new Date()): Promise<QueueCounts> {
   )
   return { due, fresh }
 }
+
+// Familiarity tiers derived from FSRS state + stability (days until ~90%
+// recall). Thresholds follow the common young/mature convention; tweak freely.
+export interface FamiliarityStats {
+  total: number
+  isNew: number       // never reviewed
+  learning: number    // in (re)learning
+  young: number       // reviewing, stability < 21d
+  mature: number      // reviewing, 21d ≤ stability < 60d
+  veryFamiliar: number // reviewing, stability ≥ 60d
+}
+
+const MATURE_DAYS = 21
+const VERY_FAMILIAR_DAYS = 60
+
+export async function familiarityStats(): Promise<FamiliarityStats> {
+  const cards = await db.cards.toArray()
+  const s: FamiliarityStats = {
+    total: cards.length,
+    isNew: 0,
+    learning: 0,
+    young: 0,
+    mature: 0,
+    veryFamiliar: 0
+  }
+  for (const c of cards) {
+    if (c.state === State.New) s.isNew++
+    else if (c.state === State.Learning || c.state === State.Relearning) s.learning++
+    else {
+      // State.Review — bucket by stability
+      const stab = c.stability ?? 0
+      if (stab >= VERY_FAMILIAR_DAYS) s.veryFamiliar++
+      else if (stab >= MATURE_DAYS) s.mature++
+      else s.young++
+    }
+  }
+  return s
+}

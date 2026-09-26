@@ -31,13 +31,16 @@ function WordRow({
   const [dx, setDx] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
 
-  const offset = open ? -REVEAL : dx
+  // While dragging, follow the finger (dx). When settled, reflect open state.
+  const offset = isDragging ? dx : open ? -REVEAL : 0
 
   const down = (e: React.PointerEvent) => {
     startX.current = e.clientX
     startY.current = e.clientY
     dragging.current = true
     moved.current = false
+    // Seed dx from the current resting position so the drag continues from here.
+    setDx(open ? -REVEAL : 0)
     setIsDragging(true)
   }
   const move = (e: React.PointerEvent) => {
@@ -47,7 +50,7 @@ function WordRow({
     // Ignore mostly-vertical gestures (let the list scroll).
     if (Math.abs(deltaY) > Math.abs(deltaX)) return
     if (Math.abs(deltaX) > 6) moved.current = true
-    // Clamp: allow left swipe (negative) up to REVEAL; allow closing an open row.
+    // Continue from the resting base; clamp between fully-closed and fully-open.
     const base = open ? -REVEAL : 0
     const next = Math.min(0, Math.max(-REVEAL, base + deltaX))
     setDx(next)
@@ -56,14 +59,13 @@ function WordRow({
     if (!dragging.current) return
     dragging.current = false
     setIsDragging(false)
-    // Snap open/closed based on how far it went.
-    if (offset < -REVEAL / 2) onOpenSwipe()
+    // Snap based on where the drag ended: past the halfway point → open, else closed.
+    if (dx < -REVEAL / 2) onOpenSwipe()
     else onCloseSwipe()
-    setDx(0)
   }
 
   const clickBody = () => {
-    // A swipe shouldn't count as a tap; and if the row is open, first tap closes it.
+    // A swipe shouldn't count as a tap; and if the row is open, a tap closes it.
     if (moved.current) return
     if (open) {
       onCloseSwipe()
