@@ -1,13 +1,109 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { db } from '../db/db'
 import { Furigana } from '../components/Furigana'
 import { WordDetailScreen } from './WordDetailScreen'
 import type { Word } from '../lib/types'
 
+const REVEAL = 84 // px the row slides left to expose the delete button
+
+// One swipeable list row. Swiping left reveals a 刪除 button (does NOT delete);
+// tapping that button asks to confirm before deleting. Tapping the row body
+// (when closed) opens the detail view.
+function WordRow({
+  word,
+  open,
+  onOpenSwipe,
+  onCloseSwipe,
+  onOpenDetail,
+  onDelete
+}: {
+  word: Word
+  open: boolean
+  onOpenSwipe: () => void
+  onCloseSwipe: () => void
+  onOpenDetail: () => void
+  onDelete: () => void
+}) {
+  const startX = useRef(0)
+  const startY = useRef(0)
+  const dragging = useRef(false)
+  const moved = useRef(false)
+  const [dx, setDx] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const offset = open ? -REVEAL : dx
+
+  const down = (e: React.PointerEvent) => {
+    startX.current = e.clientX
+    startY.current = e.clientY
+    dragging.current = true
+    moved.current = false
+    setIsDragging(true)
+  }
+  const move = (e: React.PointerEvent) => {
+    if (!dragging.current) return
+    const deltaX = e.clientX - startX.current
+    const deltaY = e.clientY - startY.current
+    // Ignore mostly-vertical gestures (let the list scroll).
+    if (Math.abs(deltaY) > Math.abs(deltaX)) return
+    if (Math.abs(deltaX) > 6) moved.current = true
+    // Clamp: allow left swipe (negative) up to REVEAL; allow closing an open row.
+    const base = open ? -REVEAL : 0
+    const next = Math.min(0, Math.max(-REVEAL, base + deltaX))
+    setDx(next)
+  }
+  const up = () => {
+    if (!dragging.current) return
+    dragging.current = false
+    setIsDragging(false)
+    // Snap open/closed based on how far it went.
+    if (offset < -REVEAL / 2) onOpenSwipe()
+    else onCloseSwipe()
+    setDx(0)
+  }
+
+  const clickBody = () => {
+    // A swipe shouldn't count as a tap; and if the row is open, first tap closes it.
+    if (moved.current) return
+    if (open) {
+      onCloseSwipe()
+      return
+    }
+    onOpenDetail()
+  }
+
+  return (
+    <li className="swipe-wrap">
+      <button className="swipe-delete" onClick={onDelete} aria-label="刪除">
+        刪除
+      </button>
+      <div
+        className="wordrow swipeable"
+        style={{ transform: `translateX(${offset}px)`, transition: isDragging ? 'none' : undefined }}
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}
+        onClick={clickBody}
+      >
+        <div className="wordrow-main">
+          <Furigana segments={word.segments} size={24} />
+          <span className="wordrow-meaning muted">
+            {word.partOfSpeech && <span className="pos-tag">{word.partOfSpeech}</span>}
+            {word.meaning}
+          </span>
+        </div>
+        <span className="chev muted">›</span>
+      </div>
+    </li>
+  )
+}
+
 export function WordListScreen() {
   const [words, setWords] = useState<Word[]>([])
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
+  const [openId, setOpenId] = useState<number | null>(null) // row with delete revealed
 
   const load = () => {
     db.words.orderBy('addedDate').reverse().toArray().then(setWords)
@@ -25,8 +121,18 @@ export function WordListScreen() {
     )
   }, [words, q])
 
-  // When a word is open, show its detail; on back, reload the list (counts,
-  // deletions, review state may have changed).
+  const remove = async (w: Word) => {
+    // Confirm step — swipe only REVEALS the button; deletion still asks first.
+    if (!confirm(`確定刪除「${w.reading}」？此動作無法復原。`)) return
+    const id = w.id!
+    await db.words.delete(id)
+    const card = await db.cards.where('wordId').equals(id).first()
+    if (card?.id != null) await db.cards.delete(card.id)
+    await db.logs.where('wordId').equals(id).delete()
+    setOpenId(null)
+    load()
+  }
+
   if (selected != null) {
     return (
       <WordDetailScreen
@@ -41,35 +147,41 @@ export function WordListScreen() {
 
   return (
     <div className="screen">
-      <header className="screen-head">
-        <h2>單字列表</h2>
-        <span className="muted">{words.length}</span>
-      </header>
+      <div className="list-sticky">
+        <header className="screen-head">
+          <h2>單字列表</h2>
+          <span className="muted">{words.length}</span>
+        </header>
 
-      <input
-        className="search"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="搜尋（漢字／讀音／意思）"
-      />
+        <input
+          className="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="搜尋（漢字／讀音／意思）"
+        />
+      </div>
 
       {filtered.length === 0 ? (
-        <p className="muted center-text">{words.length === 0 ? '還沒有單字，去「新增」或「資料」匯入吧。' : '找不到符合的單字'}</p>
+        <p className="muted center-text">
+          {words.length === 0 ? '還沒有單字，去「新增」或「資料」匯入吧。' : '找不到符合的單字'}
+        </p>
       ) : (
-        <ul className="wordlist">
-          {filtered.map((w) => (
-            <li key={w.id} className="wordrow" onClick={() => setSelected(w.id!)}>
-              <div className="wordrow-main">
-                <Furigana segments={w.segments} size={24} />
-                <span className="wordrow-meaning muted">
-                  {w.partOfSpeech && <span className="pos-tag">{w.partOfSpeech}</span>}
-                  {w.meaning}
-                </span>
-              </div>
-              <span className="chev muted">›</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="hint muted">← 向左滑可刪除</p>
+          <ul className="wordlist">
+            {filtered.map((w) => (
+              <WordRow
+                key={w.id}
+                word={w}
+                open={openId === w.id}
+                onOpenSwipe={() => setOpenId(w.id!)}
+                onCloseSwipe={() => setOpenId((cur) => (cur === w.id ? null : cur))}
+                onOpenDetail={() => setSelected(w.id!)}
+                onDelete={() => remove(w)}
+              />
+            ))}
+          </ul>
+        </>
       )}
     </div>
   )

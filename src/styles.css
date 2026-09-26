@@ -257,6 +257,20 @@ button.link { background: none; padding: 6px; color: var(--muted); font-size: 15
 .tabbar button.on .ti-svg { stroke-width: 2.1; }
 
 /* ── Word list ──────────────────────────────────────────────────── */
+.list-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  /* stretch across the .screen horizontal padding so rows don't peek at the sides */
+  margin: -20px -18px 0;
+  padding: 20px 18px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg);
+  /* soft fade so scrolling rows meet the bar cleanly */
+  box-shadow: 0 6px 10px -8px rgba(58, 47, 42, 0.25);
+}
 .search {
   font-family: var(--tc);
   font-size: 16px;
@@ -268,6 +282,32 @@ button.link { background: none; padding: 6px; color: var(--muted); font-size: 15
 }
 .search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--ring); }
 .wordlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.swipe-wrap {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.swipe-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 84px;
+  border-radius: 0;
+  background: var(--again);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: none;
+  z-index: 0;
+}
+.wordrow.swipeable {
+  position: relative;
+  z-index: 1;
+  touch-action: pan-y; /* let vertical scroll through, capture horizontal */
+  transition: transform 0.18s ease;
+  will-change: transform;
+}
 .wordrow {
   background: var(--surface);
   border-radius: 14px;
