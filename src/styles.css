@@ -46,6 +46,10 @@ body {
   height: 100%;
   height: -webkit-fill-available;
   height: 100dvh;
+  /* Paint the theme background on the app itself so every screen shows it
+     up to the top — the fixed body gradient doesn't reach under the
+     status-bar inset inside the scrollable .tab-body. */
+  background: linear-gradient(160deg, #fff7ef 0%, #ffeede 100%);
 }
 
 .screen {
