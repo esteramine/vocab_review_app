@@ -330,6 +330,7 @@ button.link { background: none; padding: 6px; color: var(--muted); font-size: 15
 .srs-meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; font-size: 13px; }
 .pill.soft { background: var(--surface-2); color: var(--text); }
 .link.danger { color: var(--again); }
+.head-actions { display: flex; gap: 4px; align-items: center; }
 
 /* ── Manage screen ──────────────────────────────────────────────── */
 .block {

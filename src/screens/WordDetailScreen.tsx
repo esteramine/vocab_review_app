@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { db } from '../db/db'
 import { gradeCard, previewIntervals, Rating } from '../lib/srs'
+import { autoSegments } from '../lib/furigana'
+import { resolveBlank } from '../lib/blank'
 import { Furigana } from '../components/Furigana'
 import { DrawPad } from '../components/DrawPad'
-import type { Card, Word } from '../lib/types'
+import { POS_OPTIONS, type Card, type Example, type Word } from '../lib/types'
 import type { Grade } from 'ts-fsrs'
 import { State } from 'ts-fsrs'
 
@@ -25,11 +27,30 @@ function clozeSentence(jp: string, start: number, end: number) {
   return jp.slice(0, start) + '＿＿＿' + jp.slice(end)
 }
 
+// Rebuild the example the way the sentence is stored. The stored jp has the
+// {…} marker already stripped, so to keep editing lossless we re-wrap the
+// blanked span in {…} for the edit field, then re-resolve on save.
+function exampleToEditable(ex?: Example): string {
+  if (!ex) return ''
+  if (ex.blankStart < 0 || ex.blankEnd <= ex.blankStart) return ex.jp
+  return ex.jp.slice(0, ex.blankStart) + '{' + ex.jp.slice(ex.blankStart, ex.blankEnd) + '}' + ex.jp.slice(ex.blankEnd)
+}
+
 export function WordDetailScreen({ wordId, onBack }: { wordId: number; onBack: () => void }) {
   const [word, setWord] = useState<Word | null>(null)
   const [card, setCard] = useState<Card | null>(null)
   const [reviewing, setReviewing] = useState(false)
   const [revealed, setRevealed] = useState(false)
+  const [editing, setEditing] = useState(false)
+
+  // Edit form state
+  const [eWord, setEWord] = useState('')
+  const [eReading, setEReading] = useState('')
+  const [eMeaning, setEMeaning] = useState('')
+  const [ePos, setEPos] = useState('')
+  const [ePosCustom, setEPosCustom] = useState('')
+  const [eJp, setEJp] = useState('')
+  const [eTl, setETl] = useState('')
 
   const load = () => {
     db.words.get(wordId).then((w) => setWord(w ?? null))
@@ -42,6 +63,48 @@ export function WordDetailScreen({ wordId, onBack }: { wordId: number; onBack: (
   if (!word) return <div className="screen center"><p className="muted">載入中…</p></div>
 
   const ex = word.examples[0]
+
+  const startEdit = () => {
+    setEWord(word.segments.map((s) => s.base).join(''))
+    setEReading(word.reading)
+    setEMeaning(word.meaning)
+    // If the current POS is one of the presets, select it; else use custom.
+    if (word.partOfSpeech && (POS_OPTIONS as readonly string[]).includes(word.partOfSpeech)) {
+      setEPos(word.partOfSpeech)
+      setEPosCustom('')
+    } else if (word.partOfSpeech) {
+      setEPos('__custom__')
+      setEPosCustom(word.partOfSpeech)
+    } else {
+      setEPos('')
+      setEPosCustom('')
+    }
+    setEJp(exampleToEditable(ex))
+    setETl(ex?.translation ?? '')
+    setEditing(true)
+  }
+
+  const editSegments = eWord && eReading ? autoSegments(eWord, eReading) : []
+  const canSaveEdit = eWord.trim() && eReading.trim() && eMeaning.trim()
+  const resolvedPos = (ePos === '__custom__' ? ePosCustom.trim() : ePos).trim() || undefined
+
+  const saveEdit = async () => {
+    if (!canSaveEdit) return
+    const examples: Example[] = []
+    if (eJp.trim()) {
+      const { jp, blankStart, blankEnd } = resolveBlank(eJp, eWord.trim())
+      examples.push({ jp, translation: eTl.trim() || undefined, blankStart, blankEnd })
+    }
+    await db.words.update(wordId, {
+      segments: autoSegments(eWord.trim(), eReading.trim()),
+      reading: eReading.trim(),
+      meaning: eMeaning.trim(),
+      partOfSpeech: resolvedPos,
+      examples
+    })
+    setEditing(false)
+    load()
+  }
 
   const del = async () => {
     if (!confirm(`確定刪除「${word.reading}」？此動作無法復原。`)) return
@@ -66,7 +129,70 @@ export function WordDetailScreen({ wordId, onBack }: { wordId: number; onBack: (
     load()
   }
 
-  // Single-word review (write prompt) — same flow as the review session.
+  // ── EDIT MODE ─────────────────────────────────────────────────────────
+  if (editing) {
+    return (
+      <div className="screen">
+        <header className="screen-head">
+          <button className="link" onClick={() => setEditing(false)}>× 取消</button>
+          <h2>編輯單字</h2>
+          <button className="link" disabled={!canSaveEdit} onClick={saveEdit}>儲存</button>
+        </header>
+
+        <label className="field">
+          <span>單字（漢字或假名）</span>
+          <input className="jp" value={eWord} onChange={(e) => setEWord(e.target.value)} placeholder="正しい / ねこ" />
+        </label>
+        <label className="field">
+          <span>讀音（假名）</span>
+          <input className="jp" value={eReading} onChange={(e) => setEReading(e.target.value)} placeholder="ただしい" />
+        </label>
+        {editSegments.length > 0 && (
+          <div className="preview">
+            <span className="muted">預覽：</span>
+            <Furigana segments={editSegments} size={30} />
+            <p className="hint muted">無漢字時只顯示假名，不會有標音浮在上面</p>
+          </div>
+        )}
+        <label className="field">
+          <span>意思（中文）</span>
+          <input value={eMeaning} onChange={(e) => setEMeaning(e.target.value)} placeholder="正確、對的" />
+        </label>
+        <label className="field">
+          <span>詞性（可留空）</span>
+          <select value={ePos} onChange={(e) => setEPos(e.target.value)}>
+            <option value="">— 選擇 —</option>
+            {POS_OPTIONS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+            <option value="__custom__">其他（自行輸入）</option>
+          </select>
+        </label>
+        {ePos === '__custom__' && (
+          <label className="field">
+            <span>自訂詞性</span>
+            <input value={ePosCustom} onChange={(e) => setEPosCustom(e.target.value)} placeholder="例：形式名詞" />
+          </label>
+        )}
+        <label className="field">
+          <span>例句（日文・可留空）</span>
+          <input className="jp" value={eJp} onChange={(e) => setEJp(e.target.value)} placeholder="毎朝パンを{食べ}ます。" />
+        </label>
+        <p className="hint muted">用 <code>{'{ }'}</code> 框住要挖空的部分（尤其動詞變化形）。</p>
+        <label className="field">
+          <span>例句翻譯（中文・可留空）</span>
+          <input value={eTl} onChange={(e) => setETl(e.target.value)} placeholder="那個答案是正確的。" />
+        </label>
+
+        <div className="row">
+          <button className="primary" disabled={!canSaveEdit} onClick={saveEdit}>儲存</button>
+          <button className="secondary" onClick={() => setEditing(false)}>取消</button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── SINGLE-WORD REVIEW ────────────────────────────────────────────────
   if (reviewing) {
     return (
       <div className="screen">
@@ -115,13 +241,15 @@ export function WordDetailScreen({ wordId, onBack }: { wordId: number; onBack: (
     )
   }
 
-  // Detail view
+  // ── DETAIL VIEW ───────────────────────────────────────────────────────
   return (
     <div className="screen">
       <header className="screen-head">
         <button className="link" onClick={onBack}>← 返回</button>
-        <h2>單字詳情</h2>
-        <button className="link danger" onClick={del}>刪除</button>
+        <div className="head-actions">
+          <button className="link" onClick={startEdit}>編輯</button>
+          <button className="link danger" onClick={del}>刪除</button>
+        </div>
       </header>
 
       <div className="card detail">
