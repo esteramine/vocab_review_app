@@ -69,7 +69,7 @@ function rowToWord(r: ParsedRow): Word {
   }
   return {
     segments: autoSegments(r.word, r.reading),
-    reading: r.reading,
+    reading: r.reading.replace(/\s+/g, ''),
     meaning: r.meaning,
     partOfSpeech: r.partOfSpeech,
     examples,

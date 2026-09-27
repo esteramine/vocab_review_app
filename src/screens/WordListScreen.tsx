@@ -106,6 +106,7 @@ export function WordListScreen() {
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
   const [openId, setOpenId] = useState<number | null>(null) // row with delete revealed
+  const [sort, setSort] = useState<'added' | 'reading'>('added')
 
   const load = () => {
     db.words.orderBy('addedDate').reverse().toArray().then(setWords)
@@ -114,14 +115,21 @@ export function WordListScreen() {
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
-    if (!s) return words
-    return words.filter(
-      (w) =>
-        w.reading.toLowerCase().includes(s) ||
-        w.meaning.toLowerCase().includes(s) ||
-        w.segments.map((seg) => seg.base).join('').toLowerCase().includes(s)
-    )
-  }, [words, q])
+    const base = !s
+      ? words
+      : words.filter(
+          (w) =>
+            w.reading.toLowerCase().includes(s) ||
+            w.meaning.toLowerCase().includes(s) ||
+            w.segments.map((seg) => seg.base).join('').toLowerCase().includes(s)
+        )
+    if (sort === 'reading') {
+      // 五十音 order by kana reading (あいうえお…). Japanese locale sorts kana
+      // correctly; copy first so we don't mutate the source array.
+      return [...base].sort((a, b) => a.reading.localeCompare(b.reading, 'ja'))
+    }
+    return base // 'added' — words already come newest-first from the DB
+  }, [words, q, sort])
 
   const remove = async (w: Word) => {
     // Confirm step — swipe only REVEALS the button; deletion still asks first.
@@ -161,6 +169,21 @@ export function WordListScreen() {
           onChange={(e) => setQ(e.target.value)}
           placeholder="搜尋（漢字／讀音／意思）"
         />
+
+        <div className="sort-toggle">
+          <button
+            className={sort === 'added' ? 'on' : ''}
+            onClick={() => setSort('added')}
+          >
+            新增順
+          </button>
+          <button
+            className={sort === 'reading' ? 'on' : ''}
+            onClick={() => setSort('reading')}
+          >
+            讀音順（あいうえお）
+          </button>
+        </div>
       </div>
 
       {filtered.length === 0 ? (

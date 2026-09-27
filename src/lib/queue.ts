@@ -12,16 +12,27 @@ export interface QueueCounts {
   fresh: number
 }
 
-const NEW_PER_DAY = 20 // cap on brand-new cards introduced per session
+const NEW_PER_DAY = 30 // cap on brand-new cards introduced per session
 
 // Returns cards that are due now (state != New and due<=now) plus up to
-// NEW_PER_DAY new cards. New cards are surfaced after due ones.
+// NEW_PER_DAY new cards. New cards are surfaced after due ones, and among the
+// new ones the MOST RECENTLY ADDED come first (so today's additions are
+// reviewed before older untouched backlog).
 export async function buildQueue(now = new Date()): Promise<QueueItem[]> {
   const cards = await db.cards.toArray()
   const dueCards = cards
     .filter((c) => c.state !== State.New && new Date(c.due) <= now)
     .sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime())
-  const newCards = cards.filter((c) => c.state === State.New).slice(0, NEW_PER_DAY)
+
+  // New cards, newest-added first. Sort by their word's addedDate (desc),
+  // then take the cap.
+  const newCardsRaw = cards.filter((c) => c.state === State.New)
+  const words = await db.words.bulkGet(newCardsRaw.map((c) => c.wordId))
+  const addedAt = new Map<number, string>()
+  newCardsRaw.forEach((c, i) => addedAt.set(c.wordId, words[i]?.addedDate ?? ''))
+  const newCards = newCardsRaw
+    .sort((a, b) => (addedAt.get(b.wordId) ?? '').localeCompare(addedAt.get(a.wordId) ?? ''))
+    .slice(0, NEW_PER_DAY)
 
   const ordered = [...dueCards, ...newCards]
   const items: QueueItem[] = []

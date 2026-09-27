@@ -97,7 +97,7 @@ export function WordDetailScreen({ wordId, onBack }: { wordId: number; onBack: (
     }
     await db.words.update(wordId, {
       segments: autoSegments(eWord.trim(), eReading.trim()),
-      reading: eReading.trim(),
+      reading: eReading.trim().replace(/\s+/g, ''),
       meaning: eMeaning.trim(),
       partOfSpeech: resolvedPos,
       examples

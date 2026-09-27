@@ -50,7 +50,7 @@ export function AddScreen({ onDone }: { onDone: () => void }) {
     }
     const wordId = await db.words.add({
       segments,
-      reading: reading.trim(),
+      reading: reading.trim().replace(/\s+/g, ''),
       meaning: meaning.trim(),
       partOfSpeech: resolvedPos,
       examples,
@@ -76,7 +76,7 @@ export function AddScreen({ onDone }: { onDone: () => void }) {
 
       <label className="field">
         <span>讀音（假名）</span>
-        <input className="jp" value={reading} onChange={(e) => setReading(e.target.value)} placeholder="ただしい" />
+        <input className="jp" value={reading} onChange={(e) => setReading(e.target.value)} placeholder="ただしい（多漢字可用空格分開，如 き れい）" />
       </label>
 
       {segments.length > 0 && (

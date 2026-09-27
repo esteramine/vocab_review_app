@@ -10,8 +10,9 @@ import {
 
 const SAMPLE_PASTE = `# 一行一個單字，用 Tab 或逗號分隔：單字 / 讀音 / 意思 / 例句(可空) / 例句翻譯(可空) / 詞性(可空)
 # 例句中用 { } 框住要挖空的部分（尤其動詞變化形）
+# 讀音想分開標在各漢字上時，用空格分隔（每個漢字一段），例：綺麗 → き れい
 安い\tやすい\t便宜的\tこの店はとても{安い}です。\t這家店很便宜。\tい形容詞
-食べる\tたべる\t吃\t毎朝パンを{食べます}。\t每天早上吃麵包。\t他動詞`
+綺麗\tき れい\t漂亮、乾淨\t部屋を{綺麗}にした。\t把房間弄乾淨了。\tな形容詞`
 
 export function ManageScreen() {
   const [bulk, setBulk] = useState('')
@@ -68,6 +69,7 @@ export function ManageScreen() {
         <h3>批次貼上新增</h3>
         <p className="hint muted">
           一行一個單字，用 <code>Tab</code> 或逗號分隔：單字 / 讀音 / 意思 / 例句 / 例句翻譯 / 詞性。
+          讀音想分開標在各漢字上時用空格分隔（每漢字一段，如 綺麗 → <span className="jp">き れい</span>）。
           可在電腦用試算表或記事本準備好再貼上。
         </p>
         <textarea
