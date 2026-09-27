@@ -14,14 +14,26 @@ export interface QueueCounts {
 
 const NEW_PER_DAY = 30 // cap on brand-new cards introduced per session
 
-// Returns cards that are due now (state != New and due<=now) plus up to
+// Day-granularity due cutoff: a card is "due today" if its due timestamp is
+// any time on or before the END of the given day. This makes a card scheduled
+// for today available from midnight (like Anki), rather than only after the
+// exact clock time it was graded. Minute-level relearning still qualifies
+// since those due times are the same day.
+function endOfDay(now: Date): Date {
+  const d = new Date(now)
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+
+// Returns cards due today (state != New, due ≤ end of today) plus up to
 // NEW_PER_DAY new cards. New cards are surfaced after due ones, and among the
 // new ones the MOST RECENTLY ADDED come first (so today's additions are
 // reviewed before older untouched backlog).
 export async function buildQueue(now = new Date()): Promise<QueueItem[]> {
+  const cutoff = endOfDay(now)
   const cards = await db.cards.toArray()
   const dueCards = cards
-    .filter((c) => c.state !== State.New && new Date(c.due) <= now)
+    .filter((c) => c.state !== State.New && new Date(c.due) <= cutoff)
     .sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime())
 
   // New cards, newest-added first. Sort by their word's addedDate (desc),
@@ -44,8 +56,9 @@ export async function buildQueue(now = new Date()): Promise<QueueItem[]> {
 }
 
 export async function queueCounts(now = new Date()): Promise<QueueCounts> {
+  const cutoff = endOfDay(now)
   const cards = await db.cards.toArray()
-  const due = cards.filter((c) => c.state !== State.New && new Date(c.due) <= now).length
+  const due = cards.filter((c) => c.state !== State.New && new Date(c.due) <= cutoff).length
   const fresh = Math.min(
     cards.filter((c) => c.state === State.New).length,
     NEW_PER_DAY

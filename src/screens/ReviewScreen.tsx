@@ -60,6 +60,18 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
       reviewType: type,
       reviewedAt: new Date().toISOString()
     })
+
+    // If the card is due again very soon (relearning — e.g. 再一次/有點難 gives
+    // a minutes-away interval), re-queue it at the END of this session instead
+    // of making the user reopen the app. Cards scheduled days out just leave.
+    const soonMs = 10 * 60 * 1000 // 10 minutes
+    const dueSoon = new Date(updated.due).getTime() - Date.now() <= soonMs
+    setQueue((q) => {
+      if (!dueSoon) return q
+      // append the updated card+word to the back
+      return [...q, { word: item.word, card: updated }]
+    })
+
     setRevealed(false)
     setIdx((i) => i + 1)
   }
