@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { db } from '../db/db'
 import { newCard } from '../lib/srs'
 import { autoSegments } from '../lib/furigana'
 import { resolveBlank } from '../lib/blank'
+import { isDuplicate } from '../lib/io'
 import { Furigana } from '../components/Furigana'
 import { POS_OPTIONS, type Example, type Segment } from '../lib/types'
 
@@ -15,9 +16,25 @@ export function AddScreen({ onDone }: { onDone: () => void }) {
   const [exampleJp, setExampleJp] = useState('')
   const [exampleTl, setExampleTl] = useState('')
   const [savedCount, setSavedCount] = useState(0)
+  const [isDup, setIsDup] = useState(false)
 
   // Live segment preview
   const segments: Segment[] = word && reading ? autoSegments(word, reading) : []
+
+  // Warn (don't block) if this word+reading already exists in the deck.
+  useEffect(() => {
+    let alive = true
+    if (!word.trim() || !reading.trim()) {
+      setIsDup(false)
+      return
+    }
+    isDuplicate(word.trim(), reading.trim()).then((d) => {
+      if (alive) setIsDup(d)
+    })
+    return () => {
+      alive = false
+    }
+  }, [word, reading])
 
   const reset = () => {
     setWord('')
@@ -87,6 +104,10 @@ export function AddScreen({ onDone }: { onDone: () => void }) {
             若假名標註不正確，請調整讀音（多個漢字有時無法自動分割）
           </p>
         </div>
+      )}
+
+      {isDup && (
+        <p className="banner warn-banner">⚠ 單字庫已有相同單字（{word.trim()}／{reading.trim().replace(/\s+/g, '')}），仍可儲存。</p>
       )}
 
       <label className="field">

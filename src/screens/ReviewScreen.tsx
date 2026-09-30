@@ -150,27 +150,37 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
         ) : (
           /* CLOZE — keep the sentence in place; fill the blank on reveal. */
           <div className="answer cloze">
-            {/* The sentence stays put across reveal. Before: gap. After: the
-                word (as furigana) drops into the same slot — minimal jump. */}
+            {/* On reveal, show the DICTIONARY form (furigana) above the
+                sentence with its reading + meaning right below it, while the
+                blank fills with the ACTUAL conjugated surface from the
+                sentence — so the sentence stays grammatical. */}
+            {revealed && (
+              <div className="cloze-dict">
+                <div className="cloze-dict-word">
+                  <Furigana segments={item.word.segments} size={30} />
+                  <span className="cloze-dict-tag muted">辭書形</span>
+                </div>
+                <p className="reading muted jp">{item.word.reading}</p>
+                <p className="meaning">{item.word.meaning}</p>
+              </div>
+            )}
             {ex && ex.blankStart >= 0 && ex.blankEnd > ex.blankStart ? (
               <p className="cue jp cloze-line">
                 <span>{ex.jp.slice(0, ex.blankStart)}</span>
                 {revealed ? (
-                  <span className="cloze-fill">
-                    <Furigana segments={item.word.segments} size={26} />
-                  </span>
+                  <span className="cloze-fill">{ex.jp.slice(ex.blankStart, ex.blankEnd)}</span>
                 ) : (
                   <span className="cloze-gap" aria-label="填空" />
                 )}
                 <span>{ex.jp.slice(ex.blankEnd)}</span>
               </p>
             ) : (
-              // No locatable blank: just show the sentence (and the word on reveal).
-              <>
-                <p className="cue jp cloze-line">{ex ? ex.jp : ''}</p>
-                {revealed && <Furigana segments={item.word.segments} size={30} />}
-              </>
+              // No locatable blank: just show the sentence (dict form already
+              // shown above on reveal).
+              <p className="cue jp cloze-line">{ex ? ex.jp : ''}</p>
             )}
+            {/* Sentence translation sits directly under the sentence on reveal. */}
+            {revealed && ex?.translation && <p className="muted cloze-tl">{ex.translation}</p>}
 
             {!revealed ? (
               <>
@@ -180,25 +190,20 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
                 </button>
               </>
             ) : (
-              <>
-                <p className="reading muted jp">{item.word.reading}</p>
-                <p className="meaning">{item.word.meaning}</p>
-                {ex?.translation && <p className="muted cloze-tl">{ex.translation}</p>}
-                <div className="grades">
-                  <button className="g-again" onClick={() => grade(Rating.Again as Grade)}>
-                    再一次<small>{intervals?.[Rating.Again]}</small>
-                  </button>
-                  <button className="g-hard" onClick={() => grade(Rating.Hard as Grade)}>
-                    有點難<small>{intervals?.[Rating.Hard]}</small>
-                  </button>
-                  <button className="g-good" onClick={() => grade(Rating.Good as Grade)}>
-                    普通<small>{intervals?.[Rating.Good]}</small>
-                  </button>
-                  <button className="g-easy" onClick={() => grade(Rating.Easy as Grade)}>
-                    簡單<small>{intervals?.[Rating.Easy]}</small>
-                  </button>
-                </div>
-              </>
+              <div className="grades">
+                <button className="g-again" onClick={() => grade(Rating.Again as Grade)}>
+                  再一次<small>{intervals?.[Rating.Again]}</small>
+                </button>
+                <button className="g-hard" onClick={() => grade(Rating.Hard as Grade)}>
+                  有點難<small>{intervals?.[Rating.Hard]}</small>
+                </button>
+                <button className="g-good" onClick={() => grade(Rating.Good as Grade)}>
+                  普通<small>{intervals?.[Rating.Good]}</small>
+                </button>
+                <button className="g-easy" onClick={() => grade(Rating.Easy as Grade)}>
+                  簡單<small>{intervals?.[Rating.Easy]}</small>
+                </button>
+              </div>
             )}
           </div>
         )}

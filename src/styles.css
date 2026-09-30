@@ -273,13 +273,35 @@ button.link { background: none; padding: 6px; color: var(--muted); font-size: 15
 /* zero-width invisible glyph gives the empty span the line's baseline, so the
    underline sits at the bottom of the text instead of floating near the top */
 .cloze-gap::before { content: '\200b'; }
-.cloze-fill { display: inline-flex; align-items: baseline; }
-.cloze-fill .furigana {
+.cloze-fill {
   color: var(--accent-2);
   font-weight: 700;
   background: rgba(34, 193, 164, 0.12);
   border-radius: 6px;
   padding: 0 4px;
+}
+/* Dictionary form + its reading/meaning shown above the sentence on reveal */
+.cloze-dict {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.cloze-dict-word {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: center;
+}
+.cloze-dict .reading { margin: 0; }
+.cloze-dict .meaning { margin: 0; }
+.cloze-dict-tag {
+  font-size: 12px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 1px 8px;
+  align-self: center;
 }
 .cloze-tl { font-size: 14px; margin: 0; }
 
@@ -435,8 +457,16 @@ button.link { background: none; padding: 6px; color: var(--muted); font-size: 15
   cursor: pointer;
 }
 .wordrow:active { transform: scale(0.99); }
-.wordrow-main { display: flex; flex-direction: column; gap: 4px; }
+.wordrow-main { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .wordrow-meaning { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.tier-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  margin-right: 10px;
+  align-self: center;
+}
 .chev { font-size: 22px; }
 .center-text { text-align: center; margin-top: 40px; }
 
@@ -477,4 +507,7 @@ button.link { background: none; padding: 6px; color: var(--muted); font-size: 15
 .banner { border-radius: 12px; padding: 10px 14px; font-size: 14px; margin: 0; }
 .banner.ok { background: rgba(52, 201, 139, 0.15); color: #1c7a55; }
 .banner.bad { background: rgba(255, 93, 115, 0.15); color: #b12a3e; }
+.banner.warn-banner { background: rgba(255, 176, 32, 0.18); color: #8a5a00; }
+.dupwarn { margin: 4px 0; display: flex; flex-direction: column; gap: 4px; }
+.dupwarn .warn { font-size: 13px; margin: 0; }
 code { background: var(--surface-2); border-radius: 6px; padding: 1px 5px; font-size: 0.9em; }

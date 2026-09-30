@@ -1,11 +1,13 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   parseBulk,
   insertRows,
+  findDuplicates,
   downloadBackup,
   readBackupFile,
   importBackup,
-  type ImportMode
+  type ImportMode,
+  type DuplicateFinding
 } from '../lib/io'
 
 const SAMPLE_PASTE = `# 一行一個單字，用 Tab 或逗號分隔：單字 / 讀音 / 意思 / 例句(可空) / 例句翻譯(可空) / 詞性(可空)
@@ -18,9 +20,27 @@ export function ManageScreen() {
   const [bulk, setBulk] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [dups, setDups] = useState<DuplicateFinding[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   const preview = bulk.trim() ? parseBulk(bulk) : null
+
+  // Check for duplicates (against the deck + within the paste) whenever the
+  // parsed rows change. Warn-only: nothing is skipped or merged.
+  useEffect(() => {
+    let alive = true
+    if (!preview || preview.rows.length === 0) {
+      setDups([])
+      return
+    }
+    findDuplicates(preview.rows).then((d) => {
+      if (alive) setDups(d)
+    })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulk])
 
   const doImportBulk = async () => {
     setErr(null)
@@ -93,6 +113,22 @@ export function ManageScreen() {
               </li>
             ))}
           </ul>
+        )}
+        {dups.length > 0 && (
+          <div className="dupwarn">
+            <p className="hint warn">
+              ⚠ 有 {dups.length} 個可能重複的單字（仍可匯入，不會自動合併）：
+            </p>
+            <ul className="errlist">
+              {dups.slice(0, 8).map((d) => (
+                <li key={d.line}>
+                  第 {d.line} 行：{d.text}
+                  {d.where === 'existing' ? '（單字庫已有）' : '（本次貼上重複）'}
+                </li>
+              ))}
+              {dups.length > 8 && <li>…還有 {dups.length - 8} 個</li>}
+            </ul>
+          </div>
         )}
         <button className="primary wide" disabled={!preview || preview.rows.length === 0} onClick={doImportBulk}>
           匯入 {preview?.rows.length ? `（${preview.rows.length}）` : ''}

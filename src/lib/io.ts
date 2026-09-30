@@ -30,6 +30,47 @@ export interface ParseResult {
   errors: { line: number; text: string; reason: string }[]
 }
 
+// A normalized key for detecting duplicate words: surface word + space-free
+// reading. Using both means true homophones (橋/箸 = はし) are NOT flagged,
+// only genuinely identical entries.
+export function dupKey(word: string, reading: string): string {
+  return `${word.trim()}\u0000${reading.trim().replace(/\s+/g, '')}`
+}
+
+export interface DuplicateFinding {
+  line: number
+  text: string
+  where: 'existing' | 'batch' // already in the deck, or repeated within this paste
+}
+
+// Warn-only duplicate detection for a parsed batch. Compares each row against
+// the words already in the DB AND against earlier rows in the same paste.
+// Does NOT merge, skip, or modify anything — the caller decides.
+export async function findDuplicates(rows: ParsedRow[]): Promise<DuplicateFinding[]> {
+  const existing = new Set((await db.words.toArray()).map((w) => dupKey(bareWord(w), w.reading)))
+  const seen = new Set<string>()
+  const out: DuplicateFinding[] = []
+  rows.forEach((r, i) => {
+    const key = dupKey(r.word, r.reading)
+    if (existing.has(key)) out.push({ line: i + 1, text: `${r.word}（${r.reading}）`, where: 'existing' })
+    else if (seen.has(key)) out.push({ line: i + 1, text: `${r.word}（${r.reading}）`, where: 'batch' })
+    seen.add(key)
+  })
+  return out
+}
+
+// The surface word of a stored Word (segments joined) for dup comparison.
+function bareWord(w: Word): string {
+  return w.segments.map((s) => s.base).join('')
+}
+
+// Does a single (word, reading) already exist in the deck? For the Add form.
+export async function isDuplicate(word: string, reading: string): Promise<boolean> {
+  const key = dupKey(word, reading)
+  const all = await db.words.toArray()
+  return all.some((w) => dupKey(bareWord(w), w.reading) === key)
+}
+
 export function parseBulk(text: string): ParseResult {
   const rows: ParsedRow[] = []
   const errors: ParseResult['errors'] = []

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { db } from '../db/db'
 import { Furigana } from '../components/Furigana'
 import { WordDetailScreen } from './WordDetailScreen'
+import { cardTier, TIER_META, type Tier } from '../lib/queue'
 import type { Word } from '../lib/types'
 
 const REVEAL = 84 // px the row slides left to expose the delete button
@@ -11,6 +12,7 @@ const REVEAL = 84 // px the row slides left to expose the delete button
 // (when closed) opens the detail view.
 function WordRow({
   word,
+  tier,
   open,
   onOpenSwipe,
   onCloseSwipe,
@@ -18,6 +20,7 @@ function WordRow({
   onDelete
 }: {
   word: Word
+  tier: Tier | undefined
   open: boolean
   onOpenSwipe: () => void
   onCloseSwipe: () => void
@@ -88,6 +91,14 @@ function WordRow({
         onPointerCancel={up}
         onClick={clickBody}
       >
+        {tier && (
+          <span
+            className="tier-dot"
+            style={{ background: TIER_META[tier].color }}
+            title={TIER_META[tier].label}
+            aria-label={TIER_META[tier].label}
+          />
+        )}
         <div className="wordrow-main">
           <Furigana segments={word.segments} size={24} />
           <span className="wordrow-meaning muted">
@@ -103,13 +114,21 @@ function WordRow({
 
 export function WordListScreen() {
   const [words, setWords] = useState<Word[]>([])
+  const [tiers, setTiers] = useState<Map<number, Tier>>(new Map())
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
   const [openId, setOpenId] = useState<number | null>(null) // row with delete revealed
-  const [sort, setSort] = useState<'added' | 'reading'>('added')
+  const [sort, setSort] = useState<'added' | 'reading' | 'familiar'>('added')
+  const [famDir, setFamDir] = useState<'desc' | 'asc'>('desc') // familiar sort direction
 
   const load = () => {
     db.words.orderBy('addedDate').reverse().toArray().then(setWords)
+    // Build a wordId → familiarity tier map from the cards.
+    db.cards.toArray().then((cards) => {
+      const m = new Map<number, Tier>()
+      for (const c of cards) m.set(c.wordId, cardTier(c))
+      setTiers(m)
+    })
   }
   useEffect(load, [])
 
@@ -128,8 +147,21 @@ export function WordListScreen() {
       // correctly; copy first so we don't mutate the source array.
       return [...base].sort((a, b) => a.reading.localeCompare(b.reading, 'ja'))
     }
+    if (sort === 'familiar') {
+      // Sort by familiarity rank; direction toggles via famDir. desc = most
+      // familiar first (非常熟悉 → 未學習), asc = least first. Tie-break by
+      // reading. A word with no card yet ranks as 未學習 (rank 0).
+      const rank = (w: Word) => {
+        const t = w.id != null ? tiers.get(w.id) : undefined
+        return t ? TIER_META[t].rank : 0
+      }
+      const dir = famDir === 'desc' ? 1 : -1
+      return [...base].sort(
+        (a, b) => dir * (rank(b) - rank(a)) || a.reading.localeCompare(b.reading, 'ja')
+      )
+    }
     return base // 'added' — words already come newest-first from the DB
-  }, [words, q, sort])
+  }, [words, q, sort, famDir, tiers])
 
   const remove = async (w: Word) => {
     // Confirm step — swipe only REVEALS the button; deletion still asks first.
@@ -183,6 +215,16 @@ export function WordListScreen() {
           >
             讀音順（あいうえお）
           </button>
+          <button
+            className={sort === 'familiar' ? 'on' : ''}
+            onClick={() =>
+              sort === 'familiar'
+                ? setFamDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+                : setSort('familiar')
+            }
+          >
+            熟悉度 {sort === 'familiar' ? (famDir === 'desc' ? '▼' : '▲') : ''}
+          </button>
         </div>
       </div>
 
@@ -198,6 +240,7 @@ export function WordListScreen() {
               <WordRow
                 key={w.id}
                 word={w}
+                tier={w.id != null ? tiers.get(w.id) : undefined}
                 open={openId === w.id}
                 onOpenSwipe={() => setOpenId(w.id!)}
                 onCloseSwipe={() => setOpenId((cur) => (cur === w.id ? null : cur))}

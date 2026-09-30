@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
-import { db } from '../db/db'
-import { queueCounts, familiarityStats, type QueueCounts, type FamiliarityStats } from '../lib/queue'
-
-const TIERS: { key: keyof FamiliarityStats; label: string; color: string }[] = [
-  { key: 'veryFamiliar', label: '非常熟悉', color: 'var(--good)' },
-  { key: 'mature', label: '熟悉', color: 'var(--accent-2)' },
-  { key: 'young', label: '複習中', color: 'var(--easy)' },
-  { key: 'learning', label: '學習中', color: 'var(--hard)' },
-  { key: 'isNew', label: '未學習', color: 'var(--muted)' }
-]
+import {
+  queueCounts,
+  familiarityStats,
+  TIER_META,
+  type QueueCounts,
+  type FamiliarityStats,
+  type Tier
+} from '../lib/queue'
+// Home breakdown order: most → least familiar.
+const TIER_ORDER: Tier[] = ['veryFamiliar', 'mature', 'young', 'learning', 'isNew']
 
 export function HomeScreen({
   onReview,
@@ -58,23 +58,23 @@ export function HomeScreen({
             <span className="fam-total">共 {total} 個</span>
           </div>
           <div className="fam-bar">
-            {TIERS.map((t) =>
-              stats[t.key] > 0 ? (
+            {TIER_ORDER.map((key) =>
+              stats[key] > 0 ? (
                 <div
-                  key={t.key}
+                  key={key}
                   className="fam-seg"
-                  style={{ flex: stats[t.key], background: t.color }}
-                  title={`${t.label}: ${stats[t.key]}`}
+                  style={{ flex: stats[key], background: TIER_META[key].color }}
+                  title={`${TIER_META[key].label}: ${stats[key]}`}
                 />
               ) : null
             )}
           </div>
           <ul className="fam-legend">
-            {TIERS.map((t) => (
-              <li key={t.key}>
-                <span className="dot" style={{ background: t.color }} />
-                <span className="fam-label">{t.label}</span>
-                <span className="fam-count">{stats[t.key]}</span>
+            {TIER_ORDER.map((key) => (
+              <li key={key}>
+                <span className="dot" style={{ background: TIER_META[key].color }} />
+                <span className="fam-label">{TIER_META[key].label}</span>
+                <span className="fam-count">{stats[key]}</span>
               </li>
             ))}
           </ul>

@@ -80,6 +80,28 @@ export interface FamiliarityStats {
 const MATURE_DAYS = 21
 const VERY_FAMILIAR_DAYS = 60
 
+// Familiarity tier of a single card, as one of the FamiliarityStats keys.
+export type Tier = 'veryFamiliar' | 'mature' | 'young' | 'learning' | 'isNew'
+
+export function cardTier(card: Card): Tier {
+  if (card.state === State.New) return 'isNew'
+  if (card.state === State.Learning || card.state === State.Relearning) return 'learning'
+  const stab = card.stability ?? 0
+  if (stab >= VERY_FAMILIAR_DAYS) return 'veryFamiliar'
+  if (stab >= MATURE_DAYS) return 'mature'
+  return 'young'
+}
+
+// Shared tier metadata (label + CSS color + a rank for sorting most→least
+// familiar). Used by Home stats and the word-list indicator/sort.
+export const TIER_META: Record<Tier, { label: string; color: string; rank: number }> = {
+  veryFamiliar: { label: '非常熟悉', color: 'var(--good)', rank: 4 },
+  mature: { label: '熟悉', color: 'var(--accent-2)', rank: 3 },
+  young: { label: '複習中', color: 'var(--easy)', rank: 2 },
+  learning: { label: '學習中', color: 'var(--hard)', rank: 1 },
+  isNew: { label: '未學習', color: 'var(--muted)', rank: 0 }
+}
+
 export async function familiarityStats(): Promise<FamiliarityStats> {
   const cards = await db.cards.toArray()
   const s: FamiliarityStats = {
@@ -91,15 +113,7 @@ export async function familiarityStats(): Promise<FamiliarityStats> {
     veryFamiliar: 0
   }
   for (const c of cards) {
-    if (c.state === State.New) s.isNew++
-    else if (c.state === State.Learning || c.state === State.Relearning) s.learning++
-    else {
-      // State.Review — bucket by stability
-      const stab = c.stability ?? 0
-      if (stab >= VERY_FAMILIAR_DAYS) s.veryFamiliar++
-      else if (stab >= MATURE_DAYS) s.mature++
-      else s.young++
-    }
+    s[cardTier(c)]++
   }
   return s
 }
