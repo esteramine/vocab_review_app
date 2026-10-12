@@ -1,8 +1,11 @@
 import { fsrs, generatorParameters, createEmptyCard, Rating, type Grade } from 'ts-fsrs'
 import type { Card } from '../lib/types'
 
-// Target ~90% retention — FSRS spaces reviews to hit this.
-const params = generatorParameters({ enable_fuzz: true, request_retention: 0.9 })
+// Target ~92% retention — FSRS spaces reviews to hit this. Raised from 0.90 so
+// words resurface a bit earlier (while recall is still strong), reducing the
+// "I'd almost forgotten it" feeling at the cost of slightly more frequent
+// reviews.
+const params = generatorParameters({ enable_fuzz: true, request_retention: 0.92 })
 const scheduler = fsrs(params)
 
 export { Rating }

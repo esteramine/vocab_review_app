@@ -1,19 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { db } from '../db/db'
 import { gradeCard, previewIntervals, Rating } from '../lib/srs'
-import { buildQueue, type QueueItem } from '../lib/queue'
+import { buildQueue, firstType, type QueueItem } from '../lib/queue'
 import { Furigana } from '../components/Furigana'
 import { DrawPad } from '../components/DrawPad'
 import type { Grade } from 'ts-fsrs'
-import type { ReviewType } from '../lib/types'
-
-// Pick which prompt to show for a given card. Alternate by reps so the same
-// word is practised as writing sometimes and cloze other times.
-function promptFor(item: QueueItem): ReviewType {
-  const hasExample = item.word.examples.length > 0
-  if (!hasExample) return 'write'
-  return item.card.reps % 2 === 0 ? 'write' : 'cloze'
-}
 
 function clozeSentence(jp: string, start: number, end: number) {
   // start === -1 (or an empty span) means we couldn't locate the word — show
@@ -36,7 +27,7 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
   }, [])
 
   const item = queue[idx]
-  const type = useMemo(() => (item ? promptFor(item) : 'write'), [item])
+  const type = item ? item.reviewType : 'write'
   const intervals = useMemo(() => (item ? previewIntervals(item.card) : null), [item])
 
   if (loading) return <div className="screen center"><p className="muted">載入中…</p></div>
@@ -52,8 +43,7 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
   }
 
   const grade = async (rating: Grade) => {
-    const updated = gradeCard(item.card, rating)
-    await db.cards.update(item.card.id!, updated)
+    // Log every attempt (both quizzes of the pair) for stats/history.
     await db.logs.add({
       wordId: item.word.id!,
       rating,
@@ -61,16 +51,29 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
       reviewedAt: new Date().toISOString()
     })
 
-    // If the card is due again very soon (relearning — e.g. 再一次/有點難 gives
-    // a minutes-away interval), re-queue it at the END of this session instead
-    // of making the user reopen the app. Cards scheduled days out just leave.
-    const soonMs = 10 * 60 * 1000 // 10 minutes
-    const dueSoon = new Date(updated.due).getTime() - Date.now() <= soonMs
-    setQueue((q) => {
-      if (!dueSoon) return q
-      // append the updated card+word to the back
-      return [...q, { word: item.word, card: updated }]
-    })
+    // Only the GRADING item of the pair advances the FSRS schedule, so one
+    // word = one scheduling event even though it's quizzed twice.
+    if (item.grades) {
+      const updated = gradeCard(item.card, rating)
+      await db.cards.update(item.card.id!, updated)
+
+      // If the card is due again very soon (relearning — e.g. 再一次/有點難
+      // gives a minutes-away interval), re-queue the WHOLE PAIR at the end of
+      // this session so you drill both quizzes again. Cards scheduled days out
+      // just leave.
+      const soonMs = 10 * 60 * 1000 // 10 minutes
+      const dueSoon = new Date(updated.due).getTime() - Date.now() <= soonMs
+      setQueue((q) => {
+        if (!dueSoon) return q
+        // Re-drill the SAME partner quiz you just failed this session (not a
+        // freshly-alternated one), so relearning stays consistent.
+        return [
+          ...q,
+          { word: item.word, card: updated, reviewType: firstType(item.word), grades: false },
+          { word: item.word, card: updated, reviewType: item.reviewType, grades: true }
+        ]
+      })
+    }
 
     setRevealed(false)
     setIdx((i) => i + 1)
@@ -78,12 +81,37 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
 
   const ex = item.word.examples[0]
 
+  // The first quiz of a pair (the 'meaning' recall) does NOT advance the
+  // schedule, so showing four FSRS buttons with interval previews there would
+  // mislead. That quiz gets a single 下一題 button; the grading quiz gets the
+  // real 再一次/有點難/普通/簡單 buttons.
+  const gradeControls = item.grades ? (
+    <div className="grades">
+      <button className="g-again" onClick={() => grade(Rating.Again as Grade)}>
+        再一次<small>{intervals?.[Rating.Again]}</small>
+      </button>
+      <button className="g-hard" onClick={() => grade(Rating.Hard as Grade)}>
+        有點難<small>{intervals?.[Rating.Hard]}</small>
+      </button>
+      <button className="g-good" onClick={() => grade(Rating.Good as Grade)}>
+        普通<small>{intervals?.[Rating.Good]}</small>
+      </button>
+      <button className="g-easy" onClick={() => grade(Rating.Easy as Grade)}>
+        簡單<small>{intervals?.[Rating.Easy]}</small>
+      </button>
+    </div>
+  ) : (
+    <button className="primary wide" onClick={() => grade(Rating.Good as Grade)}>
+      下一題
+    </button>
+  )
+
   return (
     <div className="screen">
       <header className="screen-head">
         <button className="link" onClick={onDone}>× 結束</button>
         <span className="muted">{idx + 1} / {queue.length}</span>
-        <span className="pill">{type === 'write' ? '手寫' : '填空'}</span>
+        <span className="pill">{type === 'write' ? '手寫' : type === 'cloze' ? '填空' : type === 'kana' ? '假名回想' : '看字回想'}</span>
       </header>
 
       <div className="card">
@@ -93,6 +121,9 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
             {!revealed && (
               <>
                 <p className="cue">{item.word.meaning}</p>
+                {item.word.partOfSpeech && (
+                  <span className="pos-tag">{item.word.partOfSpeech}</span>
+                )}
                 {ex && (
                   <p className="cue jp cloze-hint">
                     {clozeSentence(ex.jp, ex.blankStart, ex.blankEnd)}
@@ -130,24 +161,9 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
                 顯示答案
               </button>
             )}
-            {revealed && (
-              <div className="grades">
-                <button className="g-again" onClick={() => grade(Rating.Again as Grade)}>
-                  再一次<small>{intervals?.[Rating.Again]}</small>
-                </button>
-                <button className="g-hard" onClick={() => grade(Rating.Hard as Grade)}>
-                  有點難<small>{intervals?.[Rating.Hard]}</small>
-                </button>
-                <button className="g-good" onClick={() => grade(Rating.Good as Grade)}>
-                  普通<small>{intervals?.[Rating.Good]}</small>
-                </button>
-                <button className="g-easy" onClick={() => grade(Rating.Easy as Grade)}>
-                  簡單<small>{intervals?.[Rating.Easy]}</small>
-                </button>
-              </div>
-            )}
+            {revealed && gradeControls}
           </div>
-        ) : (
+        ) : type === 'cloze' ? (
           /* CLOZE — keep the sentence in place; fill the blank on reveal. */
           <div className="answer cloze">
             {/* On reveal, show the DICTIONARY form (furigana) above the
@@ -190,20 +206,64 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
                 </button>
               </>
             ) : (
-              <div className="grades">
-                <button className="g-again" onClick={() => grade(Rating.Again as Grade)}>
-                  再一次<small>{intervals?.[Rating.Again]}</small>
+              gradeControls
+            )}
+          </div>
+        ) : type === 'meaning' ? (
+          /* MEANING — show the Japanese word (+ reading, + example as context)
+             and recall the Chinese meaning; reveal it on tap. */
+          <div className={revealed ? 'answer' : 'prompt'}>
+            <Furigana segments={item.word.segments} size={40} />
+            <p className="reading muted jp">{item.word.reading}</p>
+
+            {!revealed ? (
+              <>
+                {ex && <p className="cue jp meaning-ex">{ex.jp}</p>}
+                <p className="hint muted">請回想這個單字的中文意思</p>
+                <button className="primary wide" onClick={() => setRevealed(true)}>
+                  顯示答案
                 </button>
-                <button className="g-hard" onClick={() => grade(Rating.Hard as Grade)}>
-                  有點難<small>{intervals?.[Rating.Hard]}</small>
+              </>
+            ) : (
+              <>
+                <p className="meaning">{item.word.meaning}</p>
+                {ex && (
+                  <div className="example">
+                    <p className="jp">{ex.jp}</p>
+                    {ex.translation && <p className="muted">{ex.translation}</p>}
+                  </div>
+                )}
+                {gradeControls}
+              </>
+            )}
+          </div>
+        ) : (
+          /* KANA — show ONLY the 平假名/片假名 reading (no kanji) and recall the
+             meaning, mirroring the N4/N3 format where only kana is given. On
+             reveal, show the full word WITH kanji (furigana) so you connect the
+             kana back to the written form. */
+          <div className={revealed ? 'answer' : 'prompt'}>
+            {!revealed ? (
+              <>
+                <p className="cue jp kana-prompt">{item.word.reading}</p>
+                <p className="hint muted">只看假名，請回想中文意思（與漢字寫法）</p>
+                <button className="primary wide" onClick={() => setRevealed(true)}>
+                  顯示答案
                 </button>
-                <button className="g-good" onClick={() => grade(Rating.Good as Grade)}>
-                  普通<small>{intervals?.[Rating.Good]}</small>
-                </button>
-                <button className="g-easy" onClick={() => grade(Rating.Easy as Grade)}>
-                  簡單<small>{intervals?.[Rating.Easy]}</small>
-                </button>
-              </div>
+              </>
+            ) : (
+              <>
+                <Furigana segments={item.word.segments} size={40} />
+                <p className="reading muted jp">{item.word.reading}</p>
+                <p className="meaning">{item.word.meaning}</p>
+                {ex && (
+                  <div className="example">
+                    <p className="jp">{ex.jp}</p>
+                    {ex.translation && <p className="muted">{ex.translation}</p>}
+                  </div>
+                )}
+                {gradeControls}
+              </>
             )}
           </div>
         )}

@@ -46,7 +46,7 @@ export interface Card extends FsrsCard {
   wordId: number
 }
 
-export type ReviewType = 'write' | 'cloze'
+export type ReviewType = 'write' | 'cloze' | 'meaning' | 'kana'
 
 export interface ReviewLog {
   id?: number

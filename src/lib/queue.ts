@@ -1,10 +1,17 @@
 import { db } from '../db/db'
-import type { Card, Word } from './types'
+import type { Card, Word, ReviewType } from './types'
 import { State } from 'ts-fsrs'
 
 export interface QueueItem {
   word: Word
   card: Card
+  // Which quiz this item is. Each due word is expanded into a PAIR: a
+  // 'meaning' quiz (see the Japanese, recall the Chinese) followed by the
+  // partner quiz ('cloze' if the word has an example, else 'write'). Only the
+  // LAST item of a pair advances the FSRS schedule (`grades: true`), so one
+  // word still produces exactly one scheduling event per review.
+  reviewType: ReviewType
+  grades: boolean
 }
 
 export interface QueueCounts {
@@ -50,9 +57,37 @@ export async function buildQueue(now = new Date()): Promise<QueueItem[]> {
   const items: QueueItem[] = []
   for (const card of ordered) {
     const word = await db.words.get(card.wordId)
-    if (word) items.push({ word, card })
+    if (!word) continue
+    // Each word gets TWO quizzes: first a reading-based recall (see the word
+    // WITHOUT its kanji — i.e. kana only — and recall the meaning, mirroring
+    // the N4/N3 test format), then a partner quiz. Only the partner (second)
+    // item grades the card so the schedule advances once per word.
+    items.push({ word, card, reviewType: firstType(word), grades: false })
+    items.push({ word, card, reviewType: partnerType(word, card), grades: true })
   }
   return items
+}
+
+// True when the word contains at least one kanji run (a segment with a reading).
+export function hasKanji(word: Word): boolean {
+  return word.segments.some((s) => s.rt !== null)
+}
+
+// The FIRST (non-grading) quiz of the pair. For a word with kanji it's 'kana'
+// — show only the 平假名/片假名 reading, no kanji, and recall the meaning (the
+// N4/N3 "kana-only" format). For a pure-kana word that's identical to seeing
+// the word itself, so it falls back to 'meaning' (shows the word + reading).
+export function firstType(word: Word): ReviewType {
+  return hasKanji(word) ? 'kana' : 'meaning'
+}
+
+// The partner quiz paired with the first recall. For a word WITH an example
+// sentence it alternates between 填空 (cloze) and 手寫 (write) across reviews
+// for variety, keyed on the card's review count so it flips each time. A word
+// with NO example can only be 手寫.
+export function partnerType(word: Word, card: Card): ReviewType {
+  if (word.examples.length === 0) return 'write'
+  return card.reps % 2 === 0 ? 'cloze' : 'write'
 }
 
 export async function queueCounts(now = new Date()): Promise<QueueCounts> {

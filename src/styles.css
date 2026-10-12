@@ -244,7 +244,22 @@ button.link { background: none; padding: 6px; color: var(--muted); font-size: 15
   border-radius: 12px;
   padding: 10px 14px;
 }
-.answer .reading { font-size: 16px; margin: 0; }
+.cue.meaning-ex {
+  font-size: 17px;
+  line-height: 1.8;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.cue.kana-prompt {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin: 8px 0;
+}
+.answer .reading, .prompt .reading { font-size: 16px; margin: 0; }
 .answer .meaning { font-size: 20px; margin: 0; color: var(--accent-2); font-weight: 600; }
 .example {
   background: var(--surface-2);
