@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { db } from '../db/db'
 import { gradeCard, previewIntervals, Rating } from '../lib/srs'
-import { autoSegments } from '../lib/furigana'
+import { deriveWord } from '../lib/furigana'
 import { resolveBlank } from '../lib/blank'
 import { Furigana } from '../components/Furigana'
 import { DrawPad } from '../components/DrawPad'
@@ -84,7 +84,7 @@ export function WordDetailScreen({ wordId, onBack }: { wordId: number; onBack: (
     setEditing(true)
   }
 
-  const editSegments = eWord && eReading ? autoSegments(eWord, eReading) : []
+  const editSegments = eWord && eReading ? deriveWord(eWord, eReading).segments : []
   const canSaveEdit = eWord.trim() && eReading.trim() && eMeaning.trim()
   const resolvedPos = (ePos === '__custom__' ? ePosCustom.trim() : ePos).trim() || undefined
 
@@ -95,9 +95,10 @@ export function WordDetailScreen({ wordId, onBack }: { wordId: number; onBack: (
       const { jp, blankStart, blankEnd } = resolveBlank(eJp, eWord.trim())
       examples.push({ jp, translation: eTl.trim() || undefined, blankStart, blankEnd })
     }
+    const { segments: segs, reading: fullReading } = deriveWord(eWord.trim(), eReading.trim())
     await db.words.update(wordId, {
-      segments: autoSegments(eWord.trim(), eReading.trim()),
-      reading: eReading.trim().replace(/\s+/g, ''),
+      segments: segs,
+      reading: fullReading,
       meaning: eMeaning.trim(),
       partOfSpeech: resolvedPos,
       examples

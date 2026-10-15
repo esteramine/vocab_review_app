@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { db } from '../db/db'
 import { newCard } from '../lib/srs'
-import { autoSegments } from '../lib/furigana'
+import { deriveWord } from '../lib/furigana'
 import { resolveBlank } from '../lib/blank'
 import { isDuplicate } from '../lib/io'
 import { Furigana } from '../components/Furigana'
@@ -18,8 +18,11 @@ export function AddScreen({ onDone }: { onDone: () => void }) {
   const [savedCount, setSavedCount] = useState(0)
   const [isDup, setIsDup] = useState(false)
 
-  // Live segment preview
-  const segments: Segment[] = word && reading ? autoSegments(word, reading) : []
+  // Live preview. Derive exactly as the save does, so you see the full-word
+  // kana (叱る → しかる, 役に立つ → やくにたつ) and the furigana split precisely
+  // as they will be stored.
+  const { segments, reading: previewReading } =
+    word && reading ? deriveWord(word, reading) : { segments: [] as Segment[], reading: '' }
 
   // Warn (don't block) if this word+reading already exists in the deck.
   useEffect(() => {
@@ -65,9 +68,10 @@ export function AddScreen({ onDone }: { onDone: () => void }) {
         blankEnd
       })
     }
+    const { segments: segs, reading: fullReading } = deriveWord(word.trim(), reading.trim())
     const wordId = await db.words.add({
-      segments,
-      reading: reading.trim().replace(/\s+/g, ''),
+      segments: segs,
+      reading: fullReading,
       meaning: meaning.trim(),
       partOfSpeech: resolvedPos,
       examples,

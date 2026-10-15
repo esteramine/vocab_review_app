@@ -5,11 +5,12 @@ import { State } from 'ts-fsrs'
 export interface QueueItem {
   word: Word
   card: Card
-  // Which quiz this item is. Each due word is expanded into a PAIR: a
-  // 'meaning' quiz (see the Japanese, recall the Chinese) followed by the
-  // partner quiz ('cloze' if the word has an example, else 'write'). Only the
-  // LAST item of a pair advances the FSRS schedule (`grades: true`), so one
-  // word still produces exactly one scheduling event per review.
+  // Which quiz this item is. Each due word is expanded into a PAIR spread
+  // across two phases: a recall quiz (phase 1) and a partner quiz (phase 2).
+  // BOTH quizzes are rated by the user, but the FSRS schedule is advanced only
+  // ONCE per word — when the partner item (`grades: true`) is graded, using
+  // the combined (worst-of) rating of the pair. So one word still produces
+  // exactly one scheduling event per review.
   reviewType: ReviewType
   grades: boolean
 }
@@ -54,18 +55,24 @@ export async function buildQueue(now = new Date()): Promise<QueueItem[]> {
     .slice(0, NEW_PER_DAY)
 
   const ordered = [...dueCards, ...newCards]
-  const items: QueueItem[] = []
+
+  // Each word gets TWO quizzes, split into TWO PHASES across the session:
+  //   Phase 1 — the reading-based recall for EVERY word (A, B, C …), then
+  //   Phase 2 — the partner quiz for every word (A, B, C …).
+  // So the session runs A(recall) B(recall) C(recall) A(partner) B(partner)
+  // C(partner), not the per-word pairs. The partner item carries grades:true,
+  // but BOTH quizzes are rated and combined into one schedule update when the
+  // partner is graded (see ReviewScreen) — one word still = one scheduling
+  // event.
+  const phase1: QueueItem[] = []
+  const phase2: QueueItem[] = []
   for (const card of ordered) {
     const word = await db.words.get(card.wordId)
     if (!word) continue
-    // Each word gets TWO quizzes: first a reading-based recall (see the word
-    // WITHOUT its kanji — i.e. kana only — and recall the meaning, mirroring
-    // the N4/N3 test format), then a partner quiz. Only the partner (second)
-    // item grades the card so the schedule advances once per word.
-    items.push({ word, card, reviewType: firstType(word), grades: false })
-    items.push({ word, card, reviewType: partnerType(word, card), grades: true })
+    phase1.push({ word, card, reviewType: firstType(word), grades: false })
+    phase2.push({ word, card, reviewType: partnerType(word, card), grades: true })
   }
-  return items
+  return [...phase1, ...phase2]
 }
 
 // True when the word contains at least one kanji run (a segment with a reading).

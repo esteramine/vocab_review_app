@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { db } from '../db/db'
 import { gradeCard, previewIntervals, Rating } from '../lib/srs'
 import { buildQueue, firstType, type QueueItem } from '../lib/queue'
+import { readingFromSegments } from '../lib/furigana'
 import { Furigana } from '../components/Furigana'
 import { DrawPad } from '../components/DrawPad'
 import type { Grade } from 'ts-fsrs'
@@ -18,6 +19,10 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
   const [idx, setIdx] = useState(0)
   const [revealed, setRevealed] = useState(false)
   const [loading, setLoading] = useState(true)
+  // Rating given on the PHASE-1 (recall) quiz, kept until that word's PHASE-2
+  // (partner) quiz is graded, then combined into a single schedule update.
+  // Keyed by card id. Pure in-memory — never persisted.
+  const [firstRatings, setFirstRatings] = useState<Map<number, Grade>>(new Map())
 
   useEffect(() => {
     buildQueue().then((q) => {
@@ -51,22 +56,44 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
       reviewedAt: new Date().toISOString()
     })
 
-    // Only the GRADING item of the pair advances the FSRS schedule, so one
-    // word = one scheduling event even though it's quizzed twice.
-    if (item.grades) {
-      const updated = gradeCard(item.card, rating)
+    if (!item.grades) {
+      // PHASE 1 (recall): don't advance the schedule yet — just remember this
+      // rating so it can be combined with the partner's when phase 2 grades
+      // the same word.
+      setFirstRatings((m) => {
+        const next = new Map(m)
+        next.set(item.card.id!, rating)
+        return next
+      })
+    } else {
+      // PHASE 2 (partner): combine with the stored phase-1 rating and advance
+      // the FSRS schedule ONCE. The combined rating is the WORSE (lower) of
+      // the two — if you failed either quiz, the word isn't solid, so the
+      // interval shouldn't grow as if you'd passed both.
+      const first = firstRatings.get(item.card.id!)
+      const combined = (first !== undefined ? Math.min(first, rating) : rating) as Grade
+
+      const updated = gradeCard(item.card, combined)
       await db.cards.update(item.card.id!, updated)
 
-      // If the card is due again very soon (relearning — e.g. 再一次/有點難
-      // gives a minutes-away interval), re-queue the WHOLE PAIR at the end of
-      // this session so you drill both quizzes again. Cards scheduled days out
-      // just leave.
+      // Clear the stored phase-1 rating for this card.
+      setFirstRatings((m) => {
+        if (!m.has(item.card.id!)) return m
+        const next = new Map(m)
+        next.delete(item.card.id!)
+        return next
+      })
+
+      // If the card is due again very soon (relearning — a low combined rating
+      // gives a minutes-away interval), re-queue BOTH quizzes at the end of
+      // this session so you drill the pair again. Cards scheduled days out just
+      // leave.
       const soonMs = 10 * 60 * 1000 // 10 minutes
       const dueSoon = new Date(updated.due).getTime() - Date.now() <= soonMs
       setQueue((q) => {
         if (!dueSoon) return q
-        // Re-drill the SAME partner quiz you just failed this session (not a
-        // freshly-alternated one), so relearning stays consistent.
+        // Re-drill the SAME partner quiz you just failed (not a freshly
+        // alternated one), so relearning stays consistent.
         return [
           ...q,
           { word: item.word, card: updated, reviewType: firstType(item.word), grades: false },
@@ -81,29 +108,26 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
 
   const ex = item.word.examples[0]
 
-  // The first quiz of a pair (the 'meaning' recall) does NOT advance the
-  // schedule, so showing four FSRS buttons with interval previews there would
-  // mislead. That quiz gets a single 下一題 button; the grading quiz gets the
-  // real 再一次/有點難/普通/簡單 buttons.
-  const gradeControls = item.grades ? (
+  // Both quizzes of the pair are now rated with the four FSRS buttons. The
+  // phase-1 (recall) rating is remembered and combined with the partner's when
+  // the partner grades, so the schedule still advances once per word. Interval
+  // previews are shown ONLY on the grading (partner) quiz — on the phase-1
+  // quiz the rating isn't applied directly, so a preview there would mislead.
+  const gradeControls = (
     <div className="grades">
       <button className="g-again" onClick={() => grade(Rating.Again as Grade)}>
-        再一次<small>{intervals?.[Rating.Again]}</small>
+        再一次{item.grades && <small>{intervals?.[Rating.Again]}</small>}
       </button>
       <button className="g-hard" onClick={() => grade(Rating.Hard as Grade)}>
-        有點難<small>{intervals?.[Rating.Hard]}</small>
+        有點難{item.grades && <small>{intervals?.[Rating.Hard]}</small>}
       </button>
       <button className="g-good" onClick={() => grade(Rating.Good as Grade)}>
-        普通<small>{intervals?.[Rating.Good]}</small>
+        普通{item.grades && <small>{intervals?.[Rating.Good]}</small>}
       </button>
       <button className="g-easy" onClick={() => grade(Rating.Easy as Grade)}>
-        簡單<small>{intervals?.[Rating.Easy]}</small>
+        簡單{item.grades && <small>{intervals?.[Rating.Easy]}</small>}
       </button>
     </div>
-  ) : (
-    <button className="primary wide" onClick={() => grade(Rating.Good as Grade)}>
-      下一題
-    </button>
   )
 
   return (
@@ -245,7 +269,9 @@ export function ReviewScreen({ onDone }: { onDone: () => void }) {
           <div className={revealed ? 'answer' : 'prompt'}>
             {!revealed ? (
               <>
-                <p className="cue jp kana-prompt">{item.word.reading}</p>
+                <p className="cue jp kana-prompt">
+                  {readingFromSegments(item.word.segments) || item.word.reading.replace(/\s+/g, '')}
+                </p>
                 <p className="hint muted">只看假名，請回想中文意思（與漢字寫法）</p>
                 <button className="primary wide" onClick={() => setRevealed(true)}>
                   顯示答案

@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { registerSW } from 'virtual:pwa-register'
-import { seedDemoIfEmpty } from './lib/seed' // also exposes window.seedDemo()/wipeAll()
+import { seedDemoIfEmpty, repairSegments } from './lib/seed' // also exposes window.seedDemo()/wipeAll()
 import './styles.css'
 
 registerSW({ immediate: true })
@@ -21,8 +21,10 @@ async function requestPersistentStorage() {
   }
 }
 
-// Seed sample words on first launch (no-op once you have your own words).
+// Seed sample words on first launch (no-op once you have your own words), then
+// repair any pre-existing words whose furigana split was incomplete.
 seedDemoIfEmpty()
+  .then(repairSegments)
   .then(requestPersistentStorage)
   .finally(() => {
     ReactDOM.createRoot(document.getElementById('root')!).render(

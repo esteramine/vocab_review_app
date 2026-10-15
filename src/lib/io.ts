@@ -1,6 +1,6 @@
 import { db } from '../db/db'
 import { newCard } from './srs'
-import { autoSegments } from './furigana'
+import { deriveWord } from './furigana'
 import { resolveBlank } from './blank'
 import type { Card, Example, ReviewLog, Word } from './types'
 
@@ -108,9 +108,10 @@ function rowToWord(r: ParsedRow): Word {
     const { jp, blankStart, blankEnd } = resolveBlank(r.exampleJp, r.word)
     examples.push({ jp, translation: r.exampleTl, blankStart, blankEnd })
   }
+  const { segments, reading: fullReading } = deriveWord(r.word, r.reading)
   return {
-    segments: autoSegments(r.word, r.reading),
-    reading: r.reading.replace(/\s+/g, ''),
+    segments,
+    reading: fullReading,
     meaning: r.meaning,
     partOfSpeech: r.partOfSpeech,
     examples,

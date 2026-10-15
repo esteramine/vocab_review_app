@@ -1,6 +1,6 @@
 import { db } from '../db/db'
 import { newCard } from './srs'
-import { autoSegments } from './furigana'
+import { autoSegments, completeReading, readingFromSegments } from './furigana'
 import { resolveBlank } from './blank'
 
 // Sample words so you can try the review flow without adding words by hand.
@@ -50,6 +50,54 @@ export async function seedDemo() {
 export async function seedDemoIfEmpty() {
   const count = await db.words.count()
   if (count === 0) await seedDemo()
+}
+
+// One-time repair for words whose stored data predates fixes to furigana
+// handling. Three problems are healed, all derived from the surface word /
+// segments so no guessing is involved:
+//
+//   1. Incomplete READING (okurigana) — the kana for the whole word was saved
+//      missing its okurigana (叱る stored as しか instead of しかる). The
+//      surface word spells out the okurigana (…る), so completeReading()
+//      appends it.
+//   2. Incomplete READING (interior kana) — an interleaved word stored a flat
+//      reading missing an INTERIOR kana particle (役に立つ stored as やくたつ,
+//      dropping the に), so the kana-recall prompt showed a gap. When the
+//      SEGMENTS are complete they encode the full reading losslessly
+//      (役→やく / に / 立→た / つ), so readingFromSegments() rebuilds やくにたつ.
+//   3. Incomplete SEGMENTS — multi-kanji compounds (待ち合わせ, 乗り換える …)
+//      stored a kanji segment with rt:'' (empty furigana). We re-derive them.
+//
+// Idempotent and cheap: words already correct are skipped. Only `reading` and
+// `segments` are touched — meaning/examples/scheduling are untouched.
+export async function repairSegments(): Promise<number> {
+  const all = await db.words.toArray()
+  let fixed = 0
+  for (const w of all) {
+    const surface = w.segments.map((s) => s.base).join('')
+    const segsBroken = w.segments.some((s) => s.rt === '')
+
+    // Prefer the reading encoded by COMPLETE segments — it is lossless for
+    // interleaved words (recovers interior kana a flat reading dropped).
+    // Fall back to okurigana completion when segments are incomplete.
+    const fromSegs = segsBroken ? '' : readingFromSegments(w.segments)
+    const fixedReading = fromSegs || completeReading(surface, w.reading)
+    const readingBroken = fixedReading !== w.reading
+
+    if (!segsBroken && !readingBroken) continue
+
+    const next = autoSegments(surface, fixedReading)
+    // Don't overwrite segments if the recomputed split is still incomplete
+    // (irregular reading) — but DO still save a healed reading if we have one.
+    const nextStillBroken = next.some((s) => s.rt === '')
+    const update: Partial<typeof w> = {}
+    if (readingBroken) update.reading = fixedReading
+    if (!nextStillBroken) update.segments = next
+    if (Object.keys(update).length === 0) continue
+    await db.words.update(w.id!, update)
+    fixed++
+  }
+  return fixed
 }
 
 export async function wipeAll() {
